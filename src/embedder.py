@@ -32,6 +32,7 @@ from qdrant_client.models import (
     MatchValue,
     PointStruct,
     VectorParams,
+    PayloadSchemaType, 
 )
 from dotenv import load_dotenv
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
@@ -107,6 +108,12 @@ def get_collection(
         client.create_collection(
             collection_name=collection_name,
             vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
+        )
+        
+    client.create_payload_index(
+            collection_name=collection_name,
+            field_name="video_id",
+            field_schema=PayloadSchemaType.KEYWORD,
         )
     return client
 

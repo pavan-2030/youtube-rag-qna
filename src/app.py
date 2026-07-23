@@ -21,19 +21,13 @@ from textual.widgets import Footer, Header, Input, Markdown, Static
 from chunker import chunk_transcript
 from embedder import (
     DEFAULT_COLLECTION_NAME,
-    DEFAULT_PERSIST_DIR,
     EmbeddingError,
     embed_and_store_chunks,
-    get_collection,
+    is_video_indexed,
 )
 from retriever import RetrievalError, ask_question
 from transcript import TranscriptExtractionError, extract_transcript_from_url
 
-
-def _already_processed(video_id: str) -> bool:
-    collection = get_collection(DEFAULT_PERSIST_DIR, DEFAULT_COLLECTION_NAME)
-    existing = collection.get(where={"video_id": video_id}, limit=1)
-    return len(existing.get("ids", [])) > 0
 
 
 class URLScreen(Screen):
@@ -68,7 +62,10 @@ class URLScreen(Screen):
             status.update("Fetching transcript...")
             transcript = await asyncio.to_thread(extract_transcript_from_url, url)
 
-            if await asyncio.to_thread(_already_processed, transcript.video_id):
+            already_indexed = await asyncio.to_thread(
+                is_video_indexed, transcript.video_id, DEFAULT_COLLECTION_NAME
+            )
+            if already_indexed:
                 status.update(f"Video {transcript.video_id} already indexed. Loading chat...")
             else:
                 status.update("Chunking transcript...")

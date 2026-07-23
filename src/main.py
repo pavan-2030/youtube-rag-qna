@@ -11,10 +11,9 @@ from __future__ import annotations
 from chunker import chunk_transcript
 from embedder import (
     DEFAULT_COLLECTION_NAME,
-    DEFAULT_PERSIST_DIR,
     EmbeddingError,
     embed_and_store_chunks,
-    get_collection,
+    is_video_indexed,
 )
 from retriever import RetrievalError, ask_question
 from transcript import (
@@ -23,15 +22,9 @@ from transcript import (
 )
 
 
-def _already_processed(video_id: str, persist_directory: str, collection_name: str) -> bool:
-    collection = get_collection(persist_directory, collection_name)
-    existing = collection.get(where={"video_id": video_id}, limit=1)
-    return len(existing.get("ids", [])) > 0
-
 
 def process_video(
     url: str,
-    persist_directory: str = DEFAULT_PERSIST_DIR,
     collection_name: str = DEFAULT_COLLECTION_NAME,
 ) -> str:
     """
@@ -41,7 +34,7 @@ def process_video(
     print("Fetching transcript...")
     transcript = extract_transcript_from_url(url)
 
-    if _already_processed(transcript.video_id, persist_directory, collection_name):
+    if is_video_indexed(transcript.video_id, collection_name):
         print(f"Video {transcript.video_id} already indexed, skipping embedding.")
         return transcript.video_id
 
@@ -49,7 +42,7 @@ def process_video(
     chunks = chunk_transcript(transcript)
 
     print(f"Embedding {len(chunks)} chunks (this calls the Gemini API, may take a bit)...")
-    embed_and_store_chunks(chunks, persist_directory=persist_directory, collection_name=collection_name)
+    embed_and_store_chunks(chunks, collection_name=collection_name)
 
     print("Done indexing.")
     return transcript.video_id
