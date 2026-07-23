@@ -1,9 +1,16 @@
 """
-Milestone 4: Retrieval + Question Answering.
+v2: Retrieval + Question Answering.
 
 Given a natural-language question, retrieves the most relevant transcript
 chunks from ChromaDB and asks a Gemini chat model to answer using only
 that context, citing the timestamp(s) it drew from.
+
+Migration note (Chroma -> Qdrant):
+- `RetrievedChunk.distance` is repurposed to hold Qdrant's similarity
+  *score* (higher = more similar) rather than Chroma's cosine *distance*
+  (lower = more similar). The field name is kept for backwards
+  compatibility with main.py / app.py's display code, but the direction
+  of "good" flipped.
 """
 
 from __future__ import annotations
@@ -12,11 +19,12 @@ from dataclasses import dataclass
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 
+from qdrant_client.models import FieldCondition, Filter, MatchValue
+
 from embedder import (
     DEFAULT_COLLECTION_NAME,
-    DEFAULT_PERSIST_DIR,
     EmbeddingError,
-    get_collection,
+    get_qdrant_client,
     get_embeddings_client,
 )
 
@@ -67,7 +75,6 @@ def retrieve(
     query: str,
     top_k: int = DEFAULT_TOP_K,
     video_id: str | None = None,
-    persist_directory: str = DEFAULT_PERSIST_DIR,
     collection_name: str = DEFAULT_COLLECTION_NAME,
     embedding_model: str | None = None,
 ) -> list[RetrievedChunk]:
@@ -78,11 +85,11 @@ def retrieve(
         query: The natural-language question.
         top_k: How many chunks to retrieve.
         video_id: If set, restrict results to a single video.
-        persist_directory / collection_name: Where the Chroma collection lives.
+        collection_name: The name of the Qdrant collection.
         embedding_model: Override the embedding model (defaults to embedder's default).
 
     Raises:
-        RetrievalError: if embedding or querying Chroma fails.
+        RetrievalError: if embedding or querying Qdrant fails.
     """
     kwargs = {"model": embedding_model} if embedding_model else {}
     try:
@@ -93,32 +100,33 @@ def retrieve(
     except Exception as exc:  # noqa: BLE001
         raise RetrievalError(f"Failed to embed query: {exc}") from exc
 
-    collection = get_collection(persist_directory, collection_name)
+    client = get_qdrant_client()
 
-    where = {"video_id": video_id} if video_id else None
+    if video_id:
+        query_filter = Filter(
+            must=[FieldCondition(key="video_id", match=MatchValue(value=video_id))]
+        )
     try:
-        results = collection.query(
-            query_embeddings=[query_vec],
-            n_results=top_k,
-            where=where,
+        results = client.query_points(
+            collection_name=collection_name,
+            query=query_vec,
+            limit=top_k,
+            query_filter=query_filter
         )
     except Exception as exc:  # noqa: BLE001
-        raise RetrievalError(f"Failed to query Chroma: {exc}") from exc
+        raise RetrievalError(f"Failed to query Qdrant: {exc}") from exc
 
-    if not results["documents"] or not results["documents"][0]:
-        return []
 
     chunks = []
-    for doc, meta, dist in zip(
-        results["documents"][0], results["metadatas"][0], results["distances"][0]
-    ):
+    for point in results.points:
+        payload = point.payload
         chunks.append(
             RetrievedChunk(
-                video_id=meta["video_id"],
-                text=doc,
-                start=meta["start"],
-                end=meta["end"],
-                distance=dist,
+                video_id=payload["video_id"],
+                text=payload["text"],
+                start=payload["start"],
+                end=payload["end"],
+                distance=point.score,
             )
         )
     return chunks
@@ -161,7 +169,6 @@ def ask_question(
     question: str,
     top_k: int = DEFAULT_TOP_K,
     video_id: str | None = None,
-    persist_directory: str = DEFAULT_PERSIST_DIR,
     collection_name: str = DEFAULT_COLLECTION_NAME,
     chat_model: str = DEFAULT_CHAT_MODEL,
 ) -> QAResult:
@@ -175,7 +182,6 @@ def ask_question(
         question,
         top_k=top_k,
         video_id=video_id,
-        persist_directory=persist_directory,
         collection_name=collection_name,
     )
     answer = generate_answer(question, chunks, chat_model=chat_model)
