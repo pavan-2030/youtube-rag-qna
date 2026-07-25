@@ -11,6 +11,8 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "textual>=8.2.8",
     "youtube-transcript-api>=1.2.4",
+    "fastapi>=0.140.0",
+    "uvicorn>=0.51.0",
 ]
 
 [dependency-groups]
