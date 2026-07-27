@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Transcript — ask the video</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0D1013;
+    --bg-raised: #14181C;
+    --border: #23282E;
+    --text: #F2F1ED;
+    --text-muted: #8B8D98;
+    --amber: #FFB627;
+    --teal: #5EEAD4;
+    --error: #FF6B6B;
+    --radius: 10px;
+    --font-display: 'Space Grotesk', sans-serif;
+    --font-body: 'IBM Plex Sans', sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    min-height: 100vh;
+  }
+
+  button, input {
+    font-family: inherit;
+    color: inherit;
+  }
+
+  a { color: var(--teal); }
+
+  ::selection { background: var(--amber); color: #0D1013; }
+
+  /* ---------- Landing screen ---------- */
+  #landing {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    text-align: center;
+  }
+
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--amber);
+    letter-spacing: 0.08em;
+    margin-bottom: 14px;
+  }
+
+  h1 {
+    font-family: var(--font-display);
+    font-size: clamp(32px, 5vw, 52px);
+    font-weight: 600;
+    line-height: 1.1;
+    margin: 0 0 12px;
+    max-width: 720px;
+  }
+
+  .subhead {
+    color: var(--text-muted);
+    font-size: 16px;
+    max-width: 480px;
+    margin: 0 0 40px;
+  }
+
+  .url-form {
+    width: 100%;
+    max-width: 560px;
+    display: flex;
+    gap: 10px;
+  }
+
+  .url-form input {
+    flex: 1;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    font-size: 15px;
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+
+  .url-form input:focus {
+    border-color: var(--amber);
+  }
+
+  .url-form button {
+    background: var(--amber);
+    color: #14110A;
+    border: none;
+    border-radius: var(--radius);
+    padding: 14px 22px;
+    font-weight: 600;
+    font-size: 15px;
+    cursor: pointer;
+    transition: transform 0.1s ease, background 0.15s ease;
+  }
+
+  .url-form button:hover:not(:disabled) { background: #ffc45a; }
+  .url-form button:active:not(:disabled) { transform: scale(0.97); }
+  .url-form button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .url-form button:focus-visible,
+  .url-form input:focus-visible,
+  #ask-form input:focus-visible,
+  #ask-form button:focus-visible,
+  .new-video-btn:focus-visible {
+    outline: 2px solid var(--teal);
+    outline-offset: 2px;
+  }
+
+  /* scrubber-style progress indicator */
+  .scrubber {
+    width: 100%;
+    max-width: 560px;
+    margin-top: 28px;
+    display: none;
+  }
+
+  .scrubber.active { display: block; }
+
+  .scrubber-track {
+    height: 3px;
+    width: 100%;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .scrubber-fill {
+    position: absolute;
+    top: 0; left: -40%;
+    height: 100%;
+    width: 40%;
+    background: var(--amber);
+    border-radius: 2px;
+    animation: sweep 1.2s ease-in-out infinite;
+  }
+
+  @keyframes sweep {
+    0%   { left: -40%; }
+    100% { left: 100%; }
+  }
+
+  .scrubber-label {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: 10px;
+  }
+
+  .error-msg {
+    color: var(--error);
+    font-size: 14px;
+    margin-top: 16px;
+    max-width: 480px;
+  }
+
+  /* ---------- Chat screen ---------- */
+  #chat-screen {
+    display: none;
+    min-height: 100vh;
+    flex-direction: column;
+  }
+
+  #chat-screen.active { display: flex; }
+
+  .chat-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-raised);
+  }
+
+  .chat-header iframe {
+    width: 120px;
+    height: 68px;
+    border-radius: 6px;
+    border: none;
+    flex-shrink: 0;
+  }
+
+  .chat-header .video-id {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .new-video-btn {
+    margin-left: auto;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: var(--radius);
+    padding: 8px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+
+  .new-video-btn:hover { border-color: var(--amber); color: var(--amber); }
+
+  #chat-log {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    max-width: 760px;
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  .msg { animation: fadeIn 0.25s ease; max-width: 100%; }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .msg-question {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 17px;
+    color: var(--text);
+  }
+
+  .msg-answer {
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    font-size: 15px;
+    line-height: 1.55;
+    margin-top: 8px;
+  }
+
+  .msg-answer.thinking { color: var(--text-muted); font-style: italic; }
+  .msg-answer.error { color: var(--error); }
+
+  .sources {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .source-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--bg);
+    background: var(--amber);
+    border-radius: 5px;
+    padding: 5px 9px;
+    text-decoration: none;
+    transition: transform 0.1s ease;
+  }
+
+  .source-chip:hover { transform: translateY(-1px); }
+
+  .source-chip::before {
+    content: '';
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--bg);
+    opacity: 0.6;
+  }
+
+  #ask-form {
+    display: flex;
+    gap: 10px;
+    padding: 16px 24px 24px;
+    max-width: 760px;
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  #ask-form input {
+    flex: 1;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 13px 16px;
+    font-size: 15px;
+    outline: none;
+  }
+
+  #ask-form input:focus { border-color: var(--teal); }
+
+  #ask-form button {
+    background: var(--teal);
+    color: #0D1013;
+    border: none;
+    border-radius: var(--radius);
+    padding: 13px 20px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  #ask-form button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .scrubber-fill { animation: none; left: 0; width: 100%; opacity: 0.4; }
+    .msg { animation: none; }
+  }
+
+  @media (max-width: 600px) {
+    .chat-header iframe { width: 84px; height: 48px; }
+  }
+</style>
+</head>
+<body>
+
+<section id="landing">
+  <div class="eyebrow">TRANSCRIPT-GROUNDED Q&amp;A</div>
+  <h1>Ask a YouTube video anything.<br>Get answers with timestamps.</h1>
+  <p class="subhead">Paste a link. Every answer cites the exact moment it came from.</p>
+
+  <form class="url-form" id="url-form">
+    <input type="text" id="url-input" placeholder="https://youtu.be/..." autocomplete="off" required />
+    <button type="submit" id="url-submit">Load video</button>
+  </form>
+
+  <div class="scrubber" id="scrubber">
+    <div class="scrubber-track"><div class="scrubber-fill"></div></div>
+    <div class="scrubber-label" id="scrubber-label">Fetching transcript…</div>
+  </div>
+
+  <div class="error-msg" id="landing-error" style="display:none;"></div>
+</section>
+
+<section id="chat-screen">
+  <div class="chat-header">
+    <iframe id="video-frame" src="" title="video preview" allowfullscreen></iframe>
+    <div>
+      <div style="font-family: var(--font-display); font-weight: 600;">Ready to answer questions</div>
+      <div class="video-id" id="video-id-label"></div>
+    </div>
+    <button class="new-video-btn" id="new-video-btn">New video</button>
+  </div>
+
+  <div id="chat-log"></div>
+
+  <form id="ask-form">
+    <input type="text" id="question-input" placeholder="Ask about this video…" autocomplete="off" required />
+    <button type="submit" id="ask-submit">Ask</button>
+  </form>
+</section>
+
+<script>
+  const API_BASE = ''; // same-origin; set to your API URL if served separately
+
+  const landing = document.getElementById('landing');
+  const urlForm = document.getElementById('url-form');
+  const urlInput = document.getElementById('url-input');
+  const urlSubmit = document.getElementById('url-submit');
+  const scrubber = document.getElementById('scrubber');
+  const scrubberLabel = document.getElementById('scrubber-label');
+  const landingError = document.getElementById('landing-error');
+
+  const chatScreen = document.getElementById('chat-screen');
+  const videoFrame = document.getElementById('video-frame');
+  const videoIdLabel = document.getElementById('video-id-label');
+  const chatLog = document.getElementById('chat-log');
+  const askForm = document.getElementById('ask-form');
+  const questionInput = document.getElementById('question-input');
+  const askSubmit = document.getElementById('ask-submit');
+  const newVideoBtn = document.getElementById('new-video-btn');
+
+  let currentVideoId = null;
+  let pollTimer = null;
+
+  function setLandingError(msg) {
+    landingError.textContent = msg;
+    landingError.style.display = msg ? 'block' : 'none';
+  }
+
+  function fmtTimestamp(sec) {
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+
+  async function submitVideo(url) {
+    setLandingError('');
+    urlSubmit.disabled = true;
+    urlInput.disabled = true;
+    scrubber.classList.add('active');
+    scrubberLabel.textContent = 'Submitting…';
+
+    try {
+      const res = await fetch(`${API_BASE}/videos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.detail ? JSON.stringify(data.detail) : 'Could not process that URL.');
+      }
+
+      currentVideoId = data.video_id;
+
+      if (data.status === 'ready') {
+        enterChat(currentVideoId, url);
+        return;
+      }
+
+      scrubberLabel.textContent = 'Indexing video — fetching transcript, embedding chunks…';
+      pollStatus(currentVideoId, url);
+
+    } catch (err) {
+      setLandingError(err.message || 'Something went wrong.');
+      resetLandingForm();
+    }
+  }
+
+  function pollStatus(videoId, originalUrl) {
+    pollTimer = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_BASE}/videos/${videoId}/status`);
+        const data = await res.json();
+
+        if (data.status === 'ready') {
+          clearInterval(pollTimer);
+          enterChat(videoId, originalUrl);
+        } else if (data.status === 'error') {
+          clearInterval(pollTimer);
+          setLandingError(data.detail || 'Indexing failed.');
+          resetLandingForm();
+        }
+        // else still "indexing" — keep polling
+      } catch (err) {
+        clearInterval(pollTimer);
+        setLandingError('Lost connection while indexing. Try again.');
+        resetLandingForm();
+      }
+    }, 2500);
+  }
+
+  function resetLandingForm() {
+    urlSubmit.disabled = false;
+    urlInput.disabled = false;
+    scrubber.classList.remove('active');
+  }
+
+  function enterChat(videoId, originalUrl) {
+    currentVideoId = videoId;
+    videoFrame.src = `https://www.youtube.com/embed/${videoId}`;
+    videoIdLabel.textContent = videoId;
+    chatLog.innerHTML = '';
+    landing.style.display = 'none';
+    chatScreen.classList.add('active');
+    questionInput.focus();
+  }
+
+  function backToLanding() {
+    chatScreen.classList.remove('active');
+    landing.style.display = 'flex';
+    urlInput.value = '';
+    resetLandingForm();
+    setLandingError('');
+    videoFrame.src = '';
+    currentVideoId = null;
+  }
+
+  async function askQuestion(question) {
+    const questionEl = document.createElement('div');
+    questionEl.className = 'msg msg-question';
+    questionEl.textContent = question;
+    chatLog.appendChild(questionEl);
+
+    const answerEl = document.createElement('div');
+    answerEl.className = 'msg-answer thinking';
+    answerEl.textContent = 'Thinking…';
+    chatLog.appendChild(answerEl);
+    chatLog.scrollTop = chatLog.scrollHeight;
+
+    askSubmit.disabled = true;
+    questionInput.disabled = true;
+
+    try {
+      const res = await fetch(`${API_BASE}/videos/${currentVideoId}/ask`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question, top_k: 5 })
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.detail || 'Could not get an answer.');
+      }
+
+      answerEl.classList.remove('thinking');
+      answerEl.textContent = data.answer;
+
+      if (data.sources && data.sources.length) {
+        const sourcesEl = document.createElement('div');
+        sourcesEl.className = 'sources';
+        data.sources.forEach(src => {
+          const chip = document.createElement('a');
+          chip.className = 'source-chip';
+          chip.textContent = src.timestamp;
+          chip.href = `https://www.youtube.com/watch?v=${currentVideoId}&t=${Math.floor(src.start)}s`;
+          chip.target = '_blank';
+          chip.rel = 'noopener';
+          sourcesEl.appendChild(chip);
+        });
+        answerEl.appendChild(sourcesEl);
+      }
+    } catch (err) {
+      answerEl.classList.remove('thinking');
+      answerEl.classList.add('error');
+      answerEl.textContent = err.message || 'Something went wrong.';
+    } finally {
+      askSubmit.disabled = false;
+      questionInput.disabled = false;
+      questionInput.focus();
+      chatLog.scrollTop = chatLog.scrollHeight;
+    }
+  }
+
+  urlForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const url = urlInput.value.trim();
+    if (url) submitVideo(url);
+  });
+
+  askForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const q = questionInput.value.trim();
+    if (!q) return;
+    questionInput.value = '';
+    askQuestion(q);
+  });
+
+  newVideoBtn.addEventListener('click', backToLanding);
+</script>
+</body>
+</html>

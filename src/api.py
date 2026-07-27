@@ -12,6 +12,7 @@ from enum import Enum
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from chunker import chunk_transcript
@@ -182,3 +183,5 @@ def ask(video_id: str, req: AskRequest) -> AskResponse:
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+app.mount("/", StaticFiles(directory="src/static", html=True), name="static")
