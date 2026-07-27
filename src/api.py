@@ -1,5 +1,5 @@
 """
-Milestone 6: FastAPI web UI layer.
+FastAPI web UI layer.
 
 Wraps the existing pipeline (transcript -> chunk -> embed -> retrieve/answer)
 in an HTTP API so a frontend (or curl / Swagger UI) can drive it without a
@@ -13,6 +13,10 @@ from enum import Enum
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi import Request 
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from pydantic import BaseModel, Field
 
 from chunker import chunk_transcript
@@ -30,6 +34,10 @@ from transcript import (
 )
 
 app = FastAPI(title="YouTube Q&A RAG API", version="0.1.0")
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Loosen this to your actual frontend origin before deploying.
 app.add_middleware(
@@ -107,7 +115,10 @@ def _run_indexing(url: str, video_id: str) -> None:
 # Routes
 # ---------------------------------------------------------------------------
 @app.post("/videos", response_model=VideoStatusResponse)
-def submit_video(req: VideoRequest, background_tasks: BackgroundTasks) -> VideoStatusResponse:
+@limiter.limit("5/minute")
+def submit_video(
+    request: Request, req: VideoRequest, background_tasks: BackgroundTasks
+) -> VideoStatusResponse:
     """
     Kick off indexing for a video. Returns immediately; poll
     GET /videos/{video_id}/status for progress.
@@ -147,7 +158,8 @@ def get_video_status(video_id: str) -> VideoStatusResponse:
 
 
 @app.post("/videos/{video_id}/ask", response_model=AskResponse)
-def ask(video_id: str, req: AskRequest) -> AskResponse:
+@limiter.limit("10/minute")
+def ask(request: Request, video_id: str, req: AskRequest) -> AskResponse:
     """Ask a question about an already-indexed video."""
     job = _JOBS.get(video_id)
     ready = (job and job["status"] == VideoStatus.READY) or is_video_indexed(

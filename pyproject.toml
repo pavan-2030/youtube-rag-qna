@@ -13,6 +13,7 @@ dependencies = [
     "youtube-transcript-api>=1.2.4",
     "fastapi>=0.140.0",
     "uvicorn>=0.51.0",
+    "slowapi>=0.1.10",
 ]
 
 [dependency-groups]
