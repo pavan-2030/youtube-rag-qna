@@ -4,3 +4,5 @@ __pycache__/
 .venv/
 chroma_db/
 data/
+eval_result.md
+eval_results.png

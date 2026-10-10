@@ -1,4 +1,7 @@
+from chunker import chunk_transcript, load_transcript_json
+from embedder import DEFAULT_COLLECTION_NAME, embed_and_store_chunks, get_qdrant_client
 from retriever import retrieve
+from matplotlib import pyplot as plt
 
 ground_truth = [
     {
@@ -93,9 +96,13 @@ ground_truth = [
     },
 ]
 
-def _format_timestamp(seconds: float) -> str:
-    minutes, secs = divmod(int(seconds), 60)
-    return f"{minutes:02d}:{secs:02d}"
+TRANSCRIPT_PATH = "data/transcripts/8idr1WZ1A7Q.json"
+CONFIGS = [(500, 100), (1000, 200), (1500, 300), (2000, 400)]  # (chunk_size, overlap)
+KS = (1, 3, 5)
+
+# def _format_timestamp(seconds: float) -> str:
+#     minutes, secs = divmod(int(seconds), 60)
+#     return f"{minutes:02d}:{secs:02d}"
 
 def is_hit(retrieved_chunk, answer_start, answer_end):
     """
@@ -104,38 +111,76 @@ def is_hit(retrieved_chunk, answer_start, answer_end):
     """
     chunk_start = retrieved_chunk.start
     chunk_end = retrieved_chunk.end
-    # Question for you: what's the actual condition for two
-    # time ranges [a,b] and [c,d] to overlap? Write it as a
-    # single boolean expression, not a bunch of if/else.
     return chunk_start <= answer_end and answer_start <= chunk_end
 
-def evaluate(ground_truth, k=3, video_id=None):
-    recalls = []
-    precisions = []
+def evaluate(ground_truth, ks=KS, video_id=None, collection_name=DEFAULT_COLLECTION_NAME):
+    """Return {k: (recall@k, precision@k)} for one collection.
+
+    Retrieves once at max(ks) and slices, since results come back ranked by score.
+    """
+    k_max = max(ks)
+    recalls = {k: [] for k in ks}
+    precisions = {k: [] for k in ks}
 
     for item in ground_truth:
-        retrieved = retrieve(item["question"], top_k=k, video_id=video_id)
-        # blocks = []
-        # for c in retrieved:
-        #     ts = f"[{_format_timestamp(c.start)}-{_format_timestamp(c.end)}]"
-        #     blocks.append(f"{ts} {c.text}")
+        retrieved = retrieve(
+            item["question"],
+            top_k=k_max,
+            video_id=video_id,
+            collection_name=collection_name,
+        )
+        for k in ks:
+            top = retrieved[:k]
+            hits = [c for c in top if is_hit(c, item["answer_start_sec"], item["answer_end_sec"])]
+            recalls[k].append(1 if hits else 0)
+            precisions[k].append(len(hits) / len(top) if top else 0)
 
-        hits = [c for c in retrieved if is_hit(c, item["answer_start_sec"], item["answer_end_sec"])]
+    return {k: (sum(recalls[k]) / len(recalls[k]), sum(precisions[k]) / len(precisions[k])) for k in ks}
 
-        # Question for you: given `hits` and `retrieved`, and knowing
-        # there's exactly ONE relevant time-window per question here,
-        # how do you compute recall and precision for this single question?
-        recall = 1 if len(hits) > 0 else 0  # since there's exactly one relevant time-window
-        precision = len(hits) / len(retrieved) if retrieved else 0
+def build_eval_collection(transcript, chunk_size, overlap, collection_name):
+    """Fresh collection per config, so old chunks never mix with new ones."""
+    client = get_qdrant_client()
+    if client.collection_exists(collection_name):
+        client.delete_collection(collection_name)
 
-        recalls.append(recall)
-        precisions.append(precision)
+    chunks = chunk_transcript(
+        transcript,
+        chunk_size_chars=chunk_size,
+        chunk_overlap_chars=overlap,
+    )
+    embed_and_store_chunks(chunks, collection_name=collection_name)
+    return chunks
 
-    avg_recall = sum(recalls) / len(recalls)
-    avg_precision = sum(precisions) / len(precisions)
-    return avg_recall, avg_precision
+def evaluate_chunk_config(transcript, ground_truth, chunk_size, overlap, ks=KS):
+    collection = f"eval_{chunk_size}_{overlap}"
+    chunks = build_eval_collection(transcript, chunk_size, overlap, collection)
+    scores = evaluate(ground_truth, ks=ks, video_id=transcript.video_id, collection_name=collection)
+    avg_len = sum(len(c.text) for c in chunks) / len(chunks)
+    return scores, len(chunks), avg_len
 
 if __name__ == "__main__":
-    recall, precision = evaluate(ground_truth, k=3, video_id="8idr1WZ1A7Q")
-    print(f"Recall@3: {recall:.2f}")
-    print(f"Precision@3: {precision:.2f}")
+    transcript = load_transcript_json(TRANSCRIPT_PATH)
+
+    print(f"{'size/overlap':<14}{'chunks':>7}{'avg_len':>9}  " +
+          "  ".join(f"R@{k}   P@{k}" for k in KS))
+    for size, overlap in CONFIGS:
+        scores, n_chunks, avg_len = evaluate_chunk_config(transcript, ground_truth, size, overlap)
+        row = "  ".join(f"{scores[k][0]:.2f}  {scores[k][1]:.2f}" for k in KS)
+        print(f"{size}/{overlap:<10}{n_chunks:>7}{avg_len:>9.0f}  {row}")
+
+
+    plt.figure(figsize=(10, 6))
+    for size, overlap in CONFIGS:
+        scores, n_chunks, avg_len = evaluate_chunk_config(transcript, ground_truth, size, overlap)
+        plt.plot(KS, [scores[k][0] for k in KS], marker='o', label=f"R@k {size}/{overlap}")
+        plt.plot(KS, [scores[k][1] for k in KS], marker='x', label=f"P@k {size}/{overlap}")
+
+    plt.title("Recall and Precision at k for Different Chunk Configurations")
+    plt.xlabel("k")
+    plt.ylabel("Score")
+    plt.xticks(KS)
+    plt.legend()
+    plt.grid()
+    plt.tight_layout()
+    plt.savefig("eval_results.png")
+    plt.show()
