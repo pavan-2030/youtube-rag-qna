@@ -6,3 +6,4 @@ chroma_db/
 data/
 eval_result.md
 eval_results.png
+test_run.py

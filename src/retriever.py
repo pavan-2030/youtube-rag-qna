@@ -140,6 +140,19 @@ def _build_context(chunks: list[RetrievedChunk]) -> str:
     return "\n\n".join(blocks)
 
 
+def content_to_text(content) -> str:
+    """Flatten a LangChain message .content (str or list of blocks) to plain text,
+    dropping 'thinking' blocks."""
+    if isinstance(content, str):
+        return content
+    parts = []
+    for block in content:
+        if isinstance(block, str):
+            parts.append(block)
+        elif isinstance(block, dict) and block.get("type") == "text":
+            parts.append(block.get("text", ""))
+    return "".join(parts).strip()
+
 def generate_answer(
     question: str,
     chunks: list[RetrievedChunk],
@@ -162,7 +175,7 @@ def generate_answer(
     except Exception as exc:  # noqa: BLE001
         raise RetrievalError(f"Failed to generate answer: {exc}") from exc
 
-    return response.content
+    return content_to_text(response.content)
 
 
 def ask_question(
